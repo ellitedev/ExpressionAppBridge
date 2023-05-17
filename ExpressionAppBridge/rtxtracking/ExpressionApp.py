@@ -167,35 +167,21 @@ def setup(config):
     
     data = json.loads(result.stdout.decode().split("\r\n\r\n\r\n")[1])
     
-    print("Available cameras")
+    print("Available cameras:")
     for c in data:
         print(f"{c['id']} - {c['name']}")
     
-    print("Select a camera")
-    while True:
-        try:
-            camera = int(input("->"))
-            if camera >= 0 and camera < len(data):
-                break
-            print("Please select a number corresponding to a camera")
-        except ValueError:
-            print("Please select a number corresponding to a camera")
+    print("\nALERT! Taking camera from config!")
+    camera = config.get('camera', )
     
-    print("Available camera modes")
+    print("\nAvailable camera modes:")
     for i, c in enumerate(data[camera]['caps']):
         fps = int((1/(c['minInterval'])) * 10000000)
         codec = formatStr(c['format'])
         print(f"{i} - {c['maxCX']}x{c['maxCY']}@{fps} {codec}({c['format']})")
     
-    print("Select a camera mode")
-    while True:
-        try:
-            camera_cap = int(input('->'))
-            if camera_cap >= 0 and camera_cap < len(data[camera]['caps']):
-                break
-            print("Please select a number corresponding a camera mode")
-        except ValueError:
-            print("Please select a number corresponding a camera mode")
+    print("\nALERT! Taking mode from config!")
+    camera_cap = config.get('camera_cap', )
     
     camera_conf = {
         "camera": camera,
