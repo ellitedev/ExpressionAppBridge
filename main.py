@@ -1,11 +1,18 @@
 import asyncio, signal, functools, json, argparse
-from ExpressionAppBridge.rtxtracking.ExpressionApp import ExpressionAppRunner, setup
+from ExpressionAppBridge.rtxtracking import ExpressionAppRunner, setup
+from ExpressionAppBridge.mediapipe import mediapipe_start
 from ExpressionAppBridge.iFM import iFM_Data, start_iFM_Sender
 from ExpressionAppBridge.tracking_data import TrackingData
 from ExpressionAppBridge.config_utils import loadConfig, debug_settings
 from ExpressionAppBridge.cal import TrackingInput, debug_entries
 
-async def main(args, config, camera_conf):
+async def rtx_main(args):
+    # Load config file.
+    config = loadConfig()
+    
+    # Test the ExpressionApp path, ask for camera settings
+    camera_conf = setup(config)
+    
     # Set up tracking storage
     tdata = TrackingData()
     
@@ -18,23 +25,30 @@ async def main(args, config, camera_conf):
     # Set up ExpressionApp
     expapp = ExpressionAppRunner(cal, config, camera_conf)
     
-    async with asyncio.TaskGroup() as tg:
-        
-        # Start ExpressionApp
-        ExpresssionApp_task = tg.create_task(expapp.start(args.cal))
-        
-        # Start iFM sender
-        iFM_Sender_task = tg.create_task(start_iFM_Sender(iFM))
+    # Run ExpressionApp and iFM sender
+    await asyncio.gather(expapp.start(args.cal), start_iFM_Sender(iFM))
 
-
+def mediapipe_main(args):
+    # Set up tracking storage
+    tdata = TrackingData()
+    
+    # iFM serializer
+    iFM = iFM_Data(tdata)
+    
+    # Set up calibration
+    cal = TrackingInput(tdata, "config/Mediapipe_Blendshapes_cal.json")
+    
+    # Start mediapipe main loop
+    mediapipe_start(cal, iFM)
 
 if __name__ == "__main__":
     # Command line stuff
     parser = argparse.ArgumentParser()
+    parser.add_argument('--mode', choices=['rtx', 'mediapipe'])
     parser.add_argument('--debug-ifm', help="Print every iFM frame sent. VERY VERBOSE", action='store_true')
-    parser.add_argument('--debug-expapp', help="Print ExpressionApp console output", action='store_true')
-    parser.add_argument('--debug-param', help="Provide a comma separated list of parameters to be printed when iFM is set partial matches are allowed. IE. 'brow,blink'", action='store', metavar='param')
-    parser.add_argument('--cal', action='store_true', help="Do a calibration on start")
+    parser.add_argument('--debug-expapp', help="Print tracker console output. Only for RTX", action='store_true')
+    parser.add_argument('--debug-param', help="Provide a comma separated list of parameters to be printed IE. 'brow,blink'", action='store', metavar='param')
+    parser.add_argument('--cal', action='store_true', help="Do a calibration on start. Only for RTX")
     
     # Parse command line args
     args = parser.parse_args()
@@ -44,15 +58,34 @@ if __name__ == "__main__":
     debug_entries = args.debug_param.split(',') if args.debug_param is not None else []
     debug_settings['debug_expapp'] = args.debug_expapp
     
-    # Load config file.
-    config = loadConfig()
+    # Handle mode selection
+    mode = args.mode
     
-    # Test the ExpressionApp path, ask for camera settings
-    camera_conf = setup(config)
+    if mode != 'rtx' or mode != 'mediapipe':
+        mode = None
     
-    with asyncio.Runner() as runner:
+    # Or ask for it if not selected
+    if mode is None:
+        print("Select mode:")
+        print("0 - Mediapipe tracking")
+        print("1 - RTX tracking")
+        while True:
+            mode = input('->')
+            if mode == '0':
+                mode = 'mediapipe'
+                break
+            elif mode == '1':
+                mode = 'rtx'
+                break
+            else:
+                print("Please select with 0 or 1")
+    
+    if mode == 'rtx':
+        # Launch rtx tracking
         try:
-            runner.run(main(args, config, camera_conf))
+            asyncio.run(rtx_main(args))
         except KeyboardInterrupt:
             pass
-        runner.run(asyncio.sleep(0.5))
+    elif mode == 'mediapipe':
+        # Launch mediapipe tracking
+        mediapipe_main(args)
